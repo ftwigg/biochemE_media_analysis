@@ -1,0 +1,345 @@
+# medium_analyzer.py
+import json
+import re
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Union
+from collections import defaultdict
+import numpy as np
+from pathlib import Path
+
+# Molecular weights of elements (g/mol)
+ATOMIC_WEIGHTS = {
+    'H': 1.008, 'C': 12.011, 'N': 14.007, 'O': 15.999,
+    'P': 30.974, 'S': 32.06, 'K': 39.098, 'Na': 22.990,
+    'Cl': 35.453, 'Ca': 40.078, 'Mg': 24.305, 'Fe': 55.845,
+    'Mn': 54.938, 'Zn': 65.38, 'Cu': 63.546, 'Mo': 95.95,
+    'Co': 58.933, 'B': 10.81, 'Si': 28.085, 'Se': 78.971
+}
+
+@dataclass
+class Component:
+    """Represents a chemical component in the medium"""
+    name: str
+    formula: str  # Chemical formula (e.g., "C6H12O6" for glucose)
+    mw: Optional[float] = None  # Molecular weight (auto-calculated if not provided)
+    hydration: int = 0  # Hydration state (e.g., 7 for MgSO4·7H2O)
+    metadata: Dict = field(default_factory=dict)  # Additional info
+    
+    def __post_init__(self):
+        if self.mw is None:
+            self.mw = self.calculate_mw()
+    
+    def parse_formula(self) -> Dict[str, float]:
+        """Parse chemical formula into elemental composition"""
+        # Handle hydrated compounds
+        formula_parts = self.formula.split('·')
+        main_formula = formula_parts[0]
+        
+        elements = defaultdict(float)
+        
+        # Parse main formula
+        pattern = r'([A-Z][a-z]?)(\d*\.?\d*)'
+        matches = re.findall(pattern, main_formula)
+        
+        for element, count in matches:
+            count = float(count) if count else 1.0
+            elements[element] += count
+        
+        # Add water if hydrated
+        if len(formula_parts) > 1 and 'H2O' in formula_parts[1]:
+            water_match = re.match(r'(\d*\.?\d*)H2O', formula_parts[1])
+            if water_match:
+                n_water = float(water_match.group(1)) if water_match.group(1) else 1.0
+                elements['H'] += 2 * n_water
+                elements['O'] += n_water
+        
+        return dict(elements)
+    
+    def calculate_mw(self) -> float:
+        """Calculate molecular weight from formula"""
+        elements = self.parse_formula()
+        return sum(ATOMIC_WEIGHTS.get(elem, 0) * count 
+                  for elem, count in elements.items())
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary for serialization"""
+        return {
+            'name': self.name,
+            'formula': self.formula,
+            'mw': self.mw,
+            'hydration': self.hydration,
+            'metadata': self.metadata
+        }
+    
+    @classmethod
+    def from_dict(cls, data: dict):
+        """Create from dictionary"""
+        return cls(**data)
+
+
+@dataclass
+class ComplexComponent(Component):
+    """For complex/undefined components like yeast extract"""
+    elemental_composition: Dict[str, float] = field(default_factory=dict)
+    
+    def __post_init__(self):
+        # For complex components, formula might be descriptive
+        if not self.elemental_composition and self.formula:
+            super().__post_init__()
+        elif self.elemental_composition:
+            # Use provided composition
+            self.formula = "Complex"
+    
+    def parse_formula(self) -> Dict[str, float]:
+        """Use provided composition or parse formula"""
+        if self.elemental_composition:
+            return self.elemental_composition.copy()
+        return super().parse_formula()
+
+
+class ComponentLibrary:
+    """Manages a library of components"""
+    
+    def __init__(self, library_path: Optional[Path] = None):
+        self.library_path = library_path or Path("components.json")
+        self.components = {}
+        self._load_defaults()
+        if self.library_path.exists():
+            self.load()
+    
+    def _load_defaults(self):
+        """Load common components"""
+        defaults = [
+            Component("Glucose", "C6H12O6"),
+            Component("Ammonium Sulfate", "(NH4)2SO4"),
+            Component("Magnesium Sulfate Heptahydrate", "MgSO4·7H2O"),
+            Component("Potassium Phosphate Monobasic", "KH2PO4"),
+            Component("Potassium Phosphate Dibasic", "K2HPO4"),
+            Component("Sodium Chloride", "NaCl"),
+            Component("Calcium Chloride Dihydrate", "CaCl2·2H2O"),
+            Component("L-Glutamine", "C5H10N2O3"),
+            Component("Glycerol", "C3H8O3"),
+            
+            # Complex component example
+            ComplexComponent(
+                name="Yeast Extract",
+                formula="Complex",
+                elemental_composition={'C': 45, 'H': 7, 'N': 11, 'O': 25, 'P': 3, 'S': 0.5},
+                mw=100,  # Approximate per 100g basis
+                metadata={'note': 'Typical composition per 100g dry weight'}
+            )
+        ]
+        
+        for comp in defaults:
+            self.components[comp.name] = comp
+    
+    def add_component(self, component: Component):
+        """Add a component to the library"""
+        self.components[component.name] = component
+        self.save()
+    
+    def get_component(self, name: str) -> Optional[Component]:
+        """Get a component by name"""
+        return self.components.get(name)
+    
+    def save(self):
+        """Save library to file"""
+        data = {
+            name: comp.to_dict() 
+            for name, comp in self.components.items()
+        }
+        with open(self.library_path, 'w') as f:
+            json.dump(data, f, indent=2)
+    
+    def load(self):
+        """Load library from file"""
+        with open(self.library_path, 'r') as f:
+            data = json.load(f)
+        for name, comp_data in data.items():
+            if comp_data.get('elemental_composition'):
+                self.components[name] = ComplexComponent.from_dict(comp_data)
+            else:
+                self.components[name] = Component.from_dict(comp_data)
+
+
+class Recipe:
+    """Represents a medium recipe"""
+    
+    def __init__(self, name: str, description: str = ""):
+        self.name = name
+        self.description = description
+        self.components: List[tuple[Component, float, str]] = []  # (component, concentration, unit)
+        self.base_recipes: List[tuple['Recipe', float]] = []  # For recipe mixing
+    
+    def add_component(self, component: Component, concentration: float, unit: str = "g/L"):
+        """Add a component to the recipe"""
+        # Convert to g/L if needed
+        conc_g_per_l = self._convert_to_g_per_l(concentration, unit, component)
+        self.components.append((component, conc_g_per_l, "g/L"))
+    
+    def add_base_recipe(self, recipe: 'Recipe', dilution_factor: float = 1.0):
+        """Add another recipe as a base (for mixing)"""
+        self.base_recipes.append((recipe, dilution_factor))
+    
+    def _convert_to_g_per_l(self, concentration: float, unit: str, component: Component) -> float:
+        """Convert various units to g/L"""
+        conversions = {
+            'g/L': 1.0,
+            'mg/L': 0.001,
+            'ug/L': 0.000001,
+            'mg/mL': 1.0,
+            'g/mL': 1000.0,
+            'M': component.mw,  # Molar to g/L
+            'mM': component.mw * 0.001,
+            'uM': component.mw * 0.000001,
+        }
+        
+        if unit not in conversions:
+            raise ValueError(f"Unknown unit: {unit}")
+        
+        return concentration * conversions[unit]
+    
+    def get_total_composition(self) -> List[tuple[Component, float]]:
+        """Get all components including those from base recipes"""
+        total = []
+        
+        # Add components from base recipes
+        for base_recipe, dilution in self.base_recipes:
+            base_components = base_recipe.get_total_composition()
+            for comp, conc in base_components:
+                total.append((comp, conc * dilution))
+        
+        # Add direct components
+        for comp, conc, _ in self.components:
+            total.append((comp, conc))
+        
+        # Combine duplicates
+        combined = defaultdict(float)
+        for comp, conc in total:
+            combined[comp.name] += conc
+        
+        # Get unique components
+        comp_dict = {comp.name: comp for comp, _ in total}
+        
+        return [(comp_dict[name], conc) for name, conc in combined.items()]
+    
+    def analyze(self) -> 'MediumAnalysis':
+        """Analyze the recipe composition"""
+        return MediumAnalysis(self)
+
+
+class MediumAnalysis:
+    """Analyzes medium composition"""
+    
+    def __init__(self, recipe: Recipe):
+        self.recipe = recipe
+        self.composition = recipe.get_total_composition()
+        self._elemental_composition = None
+        self._calculate_all()
+    
+    def _calculate_all(self):
+        """Calculate all metrics"""
+        self._elemental_composition = self._calculate_elemental_composition()
+    
+    def _calculate_elemental_composition(self) -> Dict[str, float]:
+        """Calculate total elemental composition in g/L"""
+        elements = defaultdict(float)
+        
+        for component, conc_g_L in self.composition:
+            comp_elements = component.parse_formula()
+            
+            for element, count in comp_elements.items():
+                # Convert from g/L of compound to g/L of element
+                element_mass_fraction = (count * ATOMIC_WEIGHTS.get(element, 0)) / component.mw
+                elements[element] += conc_g_L * element_mass_fraction
+        
+        return dict(elements)
+    
+    def get_elemental_composition(self, unit: str = "g/L") -> Dict[str, float]:
+        """Get elemental composition in specified units"""
+        if unit == "g/L":
+            return self._elemental_composition.copy()
+        elif unit == "mg/L" or unit == "ppm":
+            return {e: c * 1000 for e, c in self._elemental_composition.items()}
+        elif unit == "mM":
+            return {e: (c * 1000) / ATOMIC_WEIGHTS[e] 
+                   for e, c in self._elemental_composition.items()}
+        else:
+            raise ValueError(f"Unknown unit: {unit}")
+    
+    def get_cn_ratio(self) -> Optional[float]:
+        """Calculate C/N ratio (mass basis)"""
+        c_mass = self._elemental_composition.get('C', 0)
+        n_mass = self._elemental_composition.get('N', 0)
+        
+        if n_mass > 0:
+            return c_mass / n_mass
+        return None
+    
+    def get_molar_cn_ratio(self) -> Optional[float]:
+        """Calculate C/N ratio (molar basis)"""
+        c_mass = self._elemental_composition.get('C', 0)
+        n_mass = self._elemental_composition.get('N', 0)
+        
+        if n_mass > 0:
+            c_moles = c_mass / ATOMIC_WEIGHTS['C']
+            n_moles = n_mass / ATOMIC_WEIGHTS['N']
+            return c_moles / n_moles
+        return None
+    
+    def get_trace_metals(self) -> Dict[str, float]:
+        """Get trace metal concentrations in ppm (mg/L)"""
+        trace_metals = ['Fe', 'Mn', 'Zn', 'Cu', 'Mo', 'Co', 'Se']
+        return {
+            metal: self._elemental_composition.get(metal, 0) * 1000
+            for metal in trace_metals
+            if metal in self._elemental_composition
+        }
+    
+    def get_summary(self) -> dict:
+        """Get comprehensive analysis summary"""
+        return {
+            'recipe_name': self.recipe.name,
+            'total_components': len(self.composition),
+            'elemental_composition_g_L': self.get_elemental_composition("g/L"),
+            'elemental_composition_ppm': self.get_elemental_composition("ppm"),
+            'cn_ratio_mass': self.get_cn_ratio(),
+            'cn_ratio_molar': self.get_molar_cn_ratio(),
+            'trace_metals_ppm': self.get_trace_metals(),
+            'total_mass_g_L': sum(conc for _, conc in self.composition)
+        }
+    
+    def print_report(self):
+        """Print a formatted analysis report"""
+        print(f"\n{'='*60}")
+        print(f"Medium Analysis Report: {self.recipe.name}")
+        print(f"{'='*60}")
+        
+        print("\nComponent Composition:")
+        print(f"{'Component':<30} {'Conc (g/L)':>12}")
+        print("-" * 43)
+        for comp, conc in self.composition:
+            print(f"{comp.name:<30} {conc:>12.4f}")
+        
+        print(f"\nTotal Mass: {sum(c for _, c in self.composition):.4f} g/L")
+        
+        print("\nElemental Composition:")
+        print(f"{'Element':<10} {'g/L':>12} {'ppm':>12}")
+        print("-" * 35)
+        for element in sorted(self._elemental_composition.keys()):
+            g_l = self._elemental_composition[element]
+            ppm = g_l * 1000
+            print(f"{element:<10} {g_l:>12.4f} {ppm:>12.2f}")
+        
+        print("\nKey Ratios:")
+        cn_mass = self.get_cn_ratio()
+        cn_molar = self.get_molar_cn_ratio()
+        if cn_mass:
+            print(f"  C/N ratio (mass):  {cn_mass:.2f}")
+            print(f"  C/N ratio (molar): {cn_molar:.2f}")
+        
+        trace_metals = self.get_trace_metals()
+        if trace_metals:
+            print("\nTrace Metals (ppm):")
+            for metal, ppm in trace_metals.items():
+                print(f"  {metal}: {ppm:.4f}")
