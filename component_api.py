@@ -2,6 +2,7 @@
 from typing import List, Dict, Optional, Any
 from dataclasses import asdict
 import json
+from medium_analyzer import Component, ComplexComponent
 
 class ComponentAPI:
     """API layer for GUI integration"""
