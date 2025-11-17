@@ -350,71 +350,144 @@ class ComplexComponent(Component):
             return self.elemental_composition.copy()
         return super().parse_formula()
 
-
 class ComponentLibrary:
-    """Manages a library of components"""
+    """Manages a library of components with database integration"""
     
-    def __init__(self, library_path: Optional[Path] = None):
-        self.library_path = library_path or Path("components.json")
+    def __init__(self, 
+                 library_path: Optional[Path] = None,
+                 database_path: Optional[Path] = None,
+                 load_from_database: bool = True):
+        """
+        Initialize component library
+        
+        Args:
+            library_path: Path to user's custom components file
+            database_path: Path to the component database
+            load_from_database: Whether to load default components from database
+        """
+        self.library_path = library_path or Path("user_components.json")
         self.components = {}
-        self._load_defaults()
+        
+        # Load from database if requested
+        if load_from_database:
+            try:
+                from component_database_manager import ComponentDatabaseManager
+                self.db_manager = ComponentDatabaseManager(database_path)
+                self._load_from_database()
+            except ImportError:
+                logger.warning("Database manager not found, loading built-in defaults")
+                self.db_manager = None
+                self._load_builtin_defaults()
+        else:
+            self.db_manager = None
+            self._load_builtin_defaults()
+        
+        # Load user's custom components (these override database components)
         if self.library_path.exists():
-            self.load()
+            self.load_user_components()
     
-    def _load_defaults(self):
-        """Load common components"""
+    def _load_from_database(self):
+        """Load components from the database"""
+        if not self.db_manager:
+            return
+        
+        for name, entry in self.db_manager.components.items():
+            if entry.type == "complex" and entry.elemental_composition:
+                comp = ComplexComponent(
+                    name=entry.name,
+                    formula=entry.formula,
+                    elemental_composition=entry.elemental_composition,
+                    mw=entry.approximate_mw,
+                    metadata={
+                        **entry.metadata,
+                        'category': entry.category,
+                        'tags': entry.tags,
+                        'synonyms': entry.synonyms,
+                        'cas_number': entry.cas_number
+                    }
+                )
+            else:
+                comp = Component(
+                    name=entry.name,
+                    formula=entry.formula,
+                    metadata={
+                        'category': entry.category,
+                        'tags': entry.tags,
+                        'synonyms': entry.synonyms,
+                        'cas_number': entry.cas_number,
+                        'common_concentrations': entry.common_concentrations,
+                        **entry.metadata
+                    }
+                )
+            self.components[name] = comp
+        
+        logger.info(f"Loaded {len(self.components)} components from database")
+    
+    def _load_builtin_defaults(self):
+        """Fallback: Load minimal built-in defaults if database unavailable"""
         defaults = [
             Component("Glucose", "C6H12O6"),
             Component("Ammonium Sulfate", "(NH4)2SO4"),
             Component("Magnesium Sulfate Heptahydrate", "MgSO4·7H2O"),
-            Component("Potassium Phosphate Monobasic", "KH2PO4"),
-            Component("Potassium Phosphate Dibasic", "K2HPO4"),
             Component("Sodium Chloride", "NaCl"),
-            Component("Calcium Chloride Dihydrate", "CaCl2·2H2O"),
-            Component("L-Glutamine", "C5H10N2O3"),
-            Component("Glycerol", "C3H8O3"),
-            
-            # Complex component example
-            ComplexComponent(
-                name="Yeast Extract",
-                formula="Complex",
-                elemental_composition={'C': 45, 'H': 7, 'N': 11, 'O': 25, 'P': 3, 'S': 0.5},
-                mw=100,  # Approximate per 100g basis
-                metadata={'note': 'Typical composition per 100g dry weight'}
-            )
         ]
-        
         for comp in defaults:
             self.components[comp.name] = comp
     
-    def add_component(self, component: Component):
-        """Add a component to the library"""
-        self.components[component.name] = component
-        self.save()
+    def load_user_components(self):
+        """Load user's custom components from file"""
+        try:
+            with open(self.library_path, 'r') as f:
+                data = json.load(f)
+            
+            for name, comp_data in data.items():
+                if comp_data.get('elemental_composition'):
+                    comp = ComplexComponent.from_dict(comp_data)
+                else:
+                    comp = Component.from_dict(comp_data)
+                # User components override database components
+                self.components[name] = comp
+                
+            logger.info(f"Loaded {len(data)} user components")
+        except Exception as e:
+            logger.error(f"Error loading user components: {e}")
     
-    def get_component(self, name: str) -> Optional[Component]:
-        """Get a component by name"""
-        return self.components.get(name)
+    def search(self, query: str, category: Optional[str] = None) -> List[Component]:
+        """Search components using database search capabilities"""
+        if self.db_manager:
+            entries = self.db_manager.search_components(query, category)
+            return [self.components.get(e.name) for e in entries 
+                   if e.name in self.components]
+        else:
+            # Fallback: simple name search
+            results = []
+            query_lower = query.lower()
+            for name, comp in self.components.items():
+                if query_lower in name.lower():
+                    results.append(comp)
+            return results
     
-    def save(self):
-        """Save library to file"""
-        data = {
-            name: comp.to_dict() 
-            for name, comp in self.components.items()
-        }
-        with open(self.library_path, 'w') as f:
-            json.dump(data, f, indent=2)
+    def get_by_category(self, category: str) -> List[Component]:
+        """Get all components in a category"""
+        if self.db_manager:
+            entries = self.db_manager.get_components_by_category(category)
+            return [self.components.get(e.name) for e in entries 
+                   if e.name in self.components]
+        else:
+            # Fallback: check metadata
+            return [comp for comp in self.components.values()
+                   if comp.metadata.get('category') == category]
     
-    def load(self):
-        """Load library from file"""
-        with open(self.library_path, 'r') as f:
-            data = json.load(f)
-        for name, comp_data in data.items():
-            if comp_data.get('elemental_composition'):
-                self.components[name] = ComplexComponent.from_dict(comp_data)
-            else:
-                self.components[name] = Component.from_dict(comp_data)
-
+    def get_by_tag(self, tag: str) -> List[Component]:
+        """Get all components with a specific tag"""
+        if self.db_manager:
+            entries = self.db_manager.get_components_by_tag(tag)
+            return [self.components.get(e.name) for e in entries 
+                   if e.name in self.components]
+        else:
+            # Fallback: check metadata
+            return [comp for comp in self.components.values()
+                   if tag in comp.metadata.get('tags', [])]
 
 class Recipe:
     """Represents a medium recipe"""
