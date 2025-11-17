@@ -431,6 +431,7 @@ class ComponentLibrary:
         defaults = [
             Component("Glucose", "C6H12O6"),
             Component("Ammonium Sulfate", "(NH4)2SO4"),
+            Component("Ammonium Chloride", "NH4Cl"),
             Component("Magnesium Sulfate Heptahydrate", "MgSO4·7H2O"),
             Component("Sodium Chloride", "NaCl"),
         ]
@@ -469,6 +470,10 @@ class ComponentLibrary:
                 if query_lower in name.lower():
                     results.append(comp)
             return results
+            
+    def get_component(self, name: str) -> Optional[Union[Component, ComplexComponent]]:
+        """Get a component by exact name from the loaded library"""
+        return self.components.get(name)
     
     def get_by_category(self, category: str) -> List[Component]:
         """Get all components in a category"""
