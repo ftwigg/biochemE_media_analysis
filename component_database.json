@@ -50,6 +50,17 @@
           }
         },
         {
+          "name": "Ammonium Hydroxide",
+          "formula": "NH4OH",
+          "synonyms": ["Ammonia Water", "Aqueous Ammonia"],
+          "cas_number": "1336-21-6",
+          "tags": ["nitrogen", "basic", "alkaline", "inorganic"],
+          "common_concentrations": {
+            "minimal": "1-2 g/L",
+            "standard": "3-5 g/L"
+          }
+        },
+        {
           "name": "Ammonium Chloride",
           "formula": "NH4Cl",
           "synonyms": ["Sal ammoniac"],
@@ -88,6 +99,13 @@
           }
         },
         {
+          "name": "Sodium Sulfate",
+          "formula": "Na2SO4",
+          "synonyms": ["Sodium sulphate", "Sodium sulfate, anhydrous"],
+          "cas_number": "7757-82-6",
+          "tags": ["sulfate", "sodium", "buffer"]
+        },
+        {
           "name": "Calcium Chloride Dihydrate",
           "formula": "CaCl2·2H2O",
           "cas_number": "10035-04-8",
@@ -123,6 +141,13 @@
           "common_concentrations": {
             "buffer": "1-10 g/L"
           }
+        },
+        {
+          "name": "Sodium Phosphate Dibasic Heptahydrate",
+          "formula": "Na2HPO4·7H2O",
+          "synonyms": ["Disodium phosphate heptahydrate"],
+          "cas_number": "7782-85-6",
+          "tags": ["phosphate", "sodium", "buffer", "hydrate"]
         }
       ]
     },
@@ -177,6 +202,40 @@
           "common_concentrations": {
             "cell_culture": "2-4 mM"
           }
+        }
+      ]
+    },
+    "vitamins": {
+      "display_name": "Vitamins",
+      "description": "Common supplemental vitamins",
+      "components": [
+        {
+          "name": "Thiamine Hydrochloride",
+          "formula": "C12H17ClN4OSHCl",
+          "synonyms": ["Thiamin", "Vitamin B1", "Aneurine"],
+          "cas_number": "67-03-8",
+          "tags": ["vitamin"]
+        },
+        {
+          "name": "Biotin",
+          "formula": "C10H16N2O3S",
+          "synonyms": ["Vitamin B7", "D-(+)-biotin"],
+          "cas_number": "58-85-5",
+          "tags": ["vitamin"]
+        },
+        {
+          "name": "Nicotinic Acid",
+          "formula": "C6H5O2N",
+          "synonyms": ["Niacin", "Vitamin B3"],
+          "cas_number": "59-67-6",
+          "tags": ["vitamin"]
+        },
+        {
+          "name": "Pyridoxine Hydrochloride",
+          "formula": "C8H11O3NHCl",
+          "synonyms": ["Pyridoxol", "Vitamin B6"],
+          "cas_number": "58-56-0",
+          "tags": ["vitamin"]
         }
       ]
     }
