@@ -1,0 +1,32 @@
+# Create the M9 recipes (base + vitamin + Mg, no trace metals here)
+M9_1000x_vitamin_stock = Recipe("M9 Vitamin Stock (1000X)", "Concentrated M9 vitamins")
+
+M9_1000x_vitamin_stock.add_component(lib.get_component("Thiamine Hydrochloride"), 0.1, "g/L")
+M9_1000x_vitamin_stock.add_component(lib.get_component("Biotin"), 0.02, "g/L")
+M9_1000x_vitamin_stock.add_component(lib.get_component("Nicotinic Acid"), 0.1, "g/L")
+M9_1000x_vitamin_stock.add_component(lib.get_component("Pyridoxine Hydrochloride"), 0.1, "g/L")
+
+M9_base = Recipe("M9 salt base")
+M9_base.add_component(lib.get_component("Sodium Phosphate Dibasic Heptahydrate"), 12.8, "g/L")
+M9_base.add_component(lib.get_component("Potassium Phosphate Monobasic"), 3.0, "g/L")
+M9_base.add_component(lib.get_component("Sodium Sulfate"), 0.608, "g/L")
+M9_base.add_component(lib.get_component("Ammonium Sulfate"), 1.234, "g/L")
+M9_base.add_component(lib.get_component("Calcium Chloride Dihydrate"), 0.0147, "g/L")
+
+Mg_1M_stock = Recipe("1M Mg Stock")
+Mg_1M_stock.add_component(lib.get_component("Magnesium Sulfate Heptahydrate"), 1000.0, "g/L")
+
+# Create M9
+production_medium = Recipe("M9 Working Medium", "M9 with supplements less trace minerals")
+
+# Add liquid stock components on basis of dilution factor
+production_medium.add_base_recipe(M9_base, 1.0)
+production_medium.add_base_recipe(M9_1000x_vitamin_stock, 0.001)
+production_medium.add_base_recipe(Mg_1M_stock, 0.002)
+
+# Add extra glucose for production
+production_medium.add_component(lib.get_component("Glucose"), 10.0, "g/L")
+
+# Analyze the final mixed medium
+prod_analysis = production_medium.analyze()
+prod_analysis.print_report()
