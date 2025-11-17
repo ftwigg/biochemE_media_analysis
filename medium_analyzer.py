@@ -433,7 +433,7 @@ class ComponentLibrary:
             Component("Ammonium Sulfate", "(NH4)2SO4"),
             Component("Ammonium Chloride", "NH4Cl"),
             Component("Magnesium Sulfate Heptahydrate", "MgSO4·7H2O"),
-            Component("Sodium Chloride", "NaCl"),
+            Component("Sodium Chloride", "NaCl")
         ]
         for comp in defaults:
             self.components[comp.name] = comp
