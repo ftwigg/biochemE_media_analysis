@@ -77,6 +77,17 @@
           }
         },
         {
+          "name": "Sodium Chloride",
+          "formula": "NaCl",
+          "synonyms": ["Table salt"],
+          "cas_number": "7647-14-5",
+          "tags": ["sodium", "chloride", "chlorine"],
+          "common_concentrations": {
+            "minimal": "0 - 1 g/L",
+            "standard": "5 - 10 g/L"
+          }
+        },
+        {
           "name": "Calcium Chloride Dihydrate",
           "formula": "CaCl2·2H2O",
           "cas_number": "10035-04-8",
