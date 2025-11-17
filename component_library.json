@@ -1,0 +1,173 @@
+{
+  "version": "1.0",
+  "last_updated": "2025-11-17",
+  "categories": {
+    "carbon_sources": {
+      "display_name": "Carbon Sources",
+      "description": "Primary carbon sources for fermentation",
+      "components": [
+        {
+          "name": "Glucose",
+          "formula": "C6H12O6",
+          "synonyms": ["Dextrose", "D-Glucose"],
+          "cas_number": "50-99-7",
+          "tags": ["sugar", "hexose", "primary_carbon"],
+          "common_concentrations": {
+            "minimal": "2-5 g/L",
+            "standard": "10-20 g/L",
+            "rich": "20-50 g/L"
+          },
+          "metadata": {
+            "solubility": "909 g/L at 25°C",
+            "note": "Most common carbon source"
+          }
+        },
+        {
+          "name": "Glycerol",
+          "formula": "C3H8O3",
+          "synonyms": ["Glycerin", "1,2,3-Propanetriol"],
+          "cas_number": "56-81-5",
+          "tags": ["polyol", "carbon_source", "cryoprotectant"],
+          "common_concentrations": {
+            "standard": "10-40 g/L"
+          }
+        }
+      ]
+    },
+    "nitrogen_sources": {
+      "display_name": "Nitrogen Sources",
+      "description": "Inorganic and organic nitrogen sources",
+      "components": [
+        {
+          "name": "Ammonium Sulfate",
+          "formula": "(NH4)2SO4",
+          "synonyms": ["Diammonium sulfate"],
+          "cas_number": "7783-20-2",
+          "tags": ["nitrogen", "sulfur", "inorganic"],
+          "common_concentrations": {
+            "minimal": "1-2 g/L",
+            "standard": "3-5 g/L"
+          }
+        },
+        {
+          "name": "Ammonium Chloride",
+          "formula": "NH4Cl",
+          "synonyms": ["Sal ammoniac"],
+          "cas_number": "12125-02-9",
+          "tags": ["nitrogen", "chloride", "inorganic"],
+          "common_concentrations": {
+            "standard": "1-5 g/L"
+          }
+        }
+      ]
+    },
+    "salts_minerals": {
+      "display_name": "Salts & Minerals",
+      "description": "Essential salts and minerals",
+      "components": [
+        {
+          "name": "Magnesium Sulfate Heptahydrate",
+          "formula": "MgSO4·7H2O",
+          "synonyms": ["Epsom salt"],
+          "cas_number": "10034-99-8",
+          "tags": ["magnesium", "sulfur", "hydrate"],
+          "common_concentrations": {
+            "minimal": "0.1-0.5 g/L",
+            "standard": "0.5-1 g/L"
+          }
+        },
+        {
+          "name": "Calcium Chloride Dihydrate",
+          "formula": "CaCl2·2H2O",
+          "cas_number": "10035-04-8",
+          "tags": ["calcium", "chloride", "hydrate"],
+          "common_concentrations": {
+            "standard": "0.01-0.1 g/L"
+          }
+        }
+      ]
+    },
+    "phosphates": {
+      "display_name": "Phosphate Buffers",
+      "description": "Phosphate sources and pH buffers",
+      "components": [
+        {
+          "name": "Potassium Phosphate Monobasic",
+          "formula": "KH2PO4",
+          "synonyms": ["Monopotassium phosphate", "KDP"],
+          "cas_number": "7778-77-0",
+          "tags": ["phosphate", "potassium", "buffer", "acidic"],
+          "pKa": 2.12,
+          "common_concentrations": {
+            "buffer": "1-10 g/L"
+          }
+        },
+        {
+          "name": "Potassium Phosphate Dibasic",
+          "formula": "K2HPO4",
+          "synonyms": ["Dipotassium phosphate"],
+          "cas_number": "7758-11-4",
+          "tags": ["phosphate", "potassium", "buffer", "basic"],
+          "pKa": 7.21,
+          "common_concentrations": {
+            "buffer": "1-10 g/L"
+          }
+        }
+      ]
+    },
+    "complex_nutrients": {
+      "display_name": "Complex Nutrients",
+      "description": "Undefined complex media components",
+      "components": [
+        {
+          "name": "Yeast Extract",
+          "formula": "Complex",
+          "type": "complex",
+          "elemental_composition": {
+            "C": 45, "H": 7, "N": 11, "O": 25, "P": 3, "S": 0.5
+          },
+          "approximate_mw": 100,
+          "tags": ["complex", "organic", "vitamin_source", "growth_factors"],
+          "common_concentrations": {
+            "minimal": "0.5-1 g/L",
+            "standard": "5 g/L",
+            "rich": "10-20 g/L"
+          },
+          "metadata": {
+            "note": "Typical composition per 100g dry weight",
+            "protein_content": "60-70%",
+            "amino_acids": "Complete"
+          }
+        },
+        {
+          "name": "Peptone",
+          "formula": "Complex",
+          "type": "complex",
+          "elemental_composition": {
+            "C": 42, "H": 7, "N": 14, "O": 24, "S": 0.7
+          },
+          "approximate_mw": 100,
+          "tags": ["complex", "protein_digest", "nitrogen_source"],
+          "common_concentrations": {
+            "standard": "5-20 g/L"
+          }
+        }
+      ]
+    },
+    "amino_acids": {
+      "display_name": "Amino Acids",
+      "description": "Standard and non-standard amino acids",
+      "components": [
+        {
+          "name": "L-Glutamine",
+          "formula": "C5H10N2O3",
+          "cas_number": "56-85-9",
+          "tags": ["amino_acid", "essential", "cell_culture"],
+          "common_concentrations": {
+            "cell_culture": "2-4 mM"
+          }
+        }
+      ]
+    }
+  }
+}
