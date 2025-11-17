@@ -16,51 +16,296 @@ ATOMIC_WEIGHTS = {
     'Co': 58.933, 'B': 10.81, 'Si': 28.085, 'Se': 78.971
 }
 
+# Registry of common ions (easily extendable)
+COMMON_IONS = {
+    "NH4": {"charge": +1, "elements": {"N": 1, "H": 4}},
+    "SO4": {"charge": -2, "elements": {"S": 1, "O": 4}},
+    "PO4": {"charge": -3, "elements": {"P": 1, "O": 4}},
+    "NO3": {"charge": -1, "elements": {"N": 1, "O": 3}},
+    "NO2": {"charge": -2, "elements": {"N": 1, "O": 2}},
+    "CO3": {"charge": -2, "elements": {"C": 1, "O": 3}},
+    "HCO3": {"charge": -1, "elements": {"H": 1, "C": 1, "O": 3}},
+    "Cl":  {"charge": -1, "elements": {"Cl": 1}},
+    "Na":  {"charge": +1, "elements": {"Na": 1}},
+    "K":   {"charge": +1, "elements": {"K": 1}},
+    "Ca":  {"charge": +2, "elements": {"Ca": 1}},
+    "Mg":  {"charge": +2, "elements": {"Mg": 1}},
+    "CH3COO": {"charge": -1, "elements": {"C": 2, "H": 3, "O": 2}}
+}
+
+@dataclass
+class FormulaAnalysis:
+    """
+    Rich representation of a parsed formula.
+    Forward-looking hub for further additions of oxidation states, redox bookkeeping, etc.
+    """
+    # Total elemental composition (includes hydrates where present)
+    elements: Dict[str, float] = field(default_factory=dict)
+    # Parenthetical or logical fragments, keyed by a label or subformula
+    fragments: Dict[str, Dict[str, float]] = field(default_factory=dict)
+    # Counts of ions from registry (NH4, SO4, etc.)
+    ions: Dict[str, float] = field(default_factory=dict)
+    # Hydration state as 'n H2O'
+    hydrate_nH2O: float = 0.0
+    # Net charge inferred from recognized ions (if any)
+    net_charge: Optional[float] = None
+
 @dataclass
 class Component:
     """Represents a chemical component in the medium"""
     name: str
-    formula: str  # Chemical formula (e.g., "C6H12O6" for glucose)
+    formula: str  # Chemical formula (e.g., "C6H12O6", "(NH4)2SO4", "MgSO4·7H2O")
     mw: Optional[float] = None  # Molecular weight (auto-calculated if not provided)
     hydration: int = 0  # Hydration state (e.g., 7 for MgSO4·7H2O)
     metadata: Dict = field(default_factory=dict)  # Additional info
-    
+
     def __post_init__(self):
         if self.mw is None:
             self.mw = self.calculate_mw()
-    
-    def parse_formula(self) -> Dict[str, float]:
-        """Parse chemical formula into elemental composition"""
-        # Handle hydrated compounds
+
+    # ---------- Formula parsing and tokenization of inputed formatul (no chemistry-aware intepretation yet) ----------
+
+    def _parse_core_formula(self, formula: str) -> Dict[str, float]:
+        """
+        Parse a formula WITHOUT hydration dots (no '·') but WITH support
+        for parentheses and multipliers, e.g. (NH4)2SO4, Ca3(PO4)2.
+
+        Returns elemental composition.
+        """
+        # Tokens: element, number, '(', ')'
+        token_pattern = r'([A-Z][a-z]?|\d*\.?\d+|[()\[\]\{\}])'
+        tokens = [t for t in re.findall(token_pattern, formula) if t]
+
+        elements_stack = [defaultdict(float)]
+        i = 0
+
+        def is_number(tok: str) -> bool:
+            return bool(re.fullmatch(r'\d*\.?\d+', tok))
+
+        def is_element(tok: str) -> bool:
+            return bool(re.fullmatch(r'[A-Z][a-z]?', tok))
+
+        while i < len(tokens):
+            tok = tokens[i]
+
+            if tok == '(':
+                # Start new group
+                elements_stack.append(defaultdict(float))
+                i += 1
+
+            elif tok == ')':
+                # End group: pop it, then apply multiplier if present
+                group = elements_stack.pop()
+                i += 1
+                mult = 1.0
+                if i < len(tokens) and is_number(tokens[i]):
+                    mult = float(tokens[i])
+                    i += 1
+                for elem, count in group.items():
+                    elements_stack[-1][elem] += count * mult
+
+            elif is_element(tok):
+                elem = tok
+                i += 1
+                mult = 1.0
+                if i < len(tokens) and is_number(tokens[i]):
+                    mult = float(tokens[i])
+                    i += 1
+                elements_stack[-1][elem] += mult
+
+            elif is_number(tok):
+                # Normally consumed right after element or ')'; if orphan, ignore
+                i += 1
+
+            else:
+                # Unexpected token; skip
+                i += 1
+
+        return dict(elements_stack[0])
+
+    def _extract_parenthetical_fragments(self, formula: str) -> Dict[str, Dict[str, float]]:
+        """
+        Extract fragments like (NH4)2 or (PO4)3 from the formula.
+
+        Returns mapping:
+            subformula (str) -> elemental composition for that subformula
+        (before applying multipliers).
+        """
+        fragments: Dict[str, Dict[str, float]] = {}
+        # Non-nested parentheses only (good for most media components).
+        pattern = r'\(([^()]*)\)(\d*\.?\d*)'
+        for group_formula, multiplier in re.findall(pattern, formula):
+            group_formula_stripped = group_formula.strip()
+            if group_formula_stripped:
+                fragments[group_formula_stripped] = self._parse_core_formula(group_formula_stripped)
+        return fragments
+
+    def _expand_for_ions(self, formula: str) -> str:
+        """Expand grouped parts of a formula ((), [], {}) with integer
+        multipliers into a flat string for ion pattern matching.
+
+        Hydrate dots/interpuncts (·) are stripped since hydrates are handled separately.
+        """
+        # Work only on the main (non-hydrate) part of the formula
+        main = formula.split('·')[0]
+
+        token_pattern = r'([A-Z][a-z]?|\d*\.?\d+|[()\[\]\{\}])'
+        tokens = [t for t in re.findall(token_pattern, main) if t]
+
+        def is_number(tok: str) -> bool:
+            return bool(re.fullmatch(r'\d*\.?\d+', tok))
+
+        stack = [""]
+        i = 0
+
+        while i < len(tokens):
+            tok = tokens[i]
+
+            if tok in '([{':
+                # Start a new grouped substring
+                stack.append("")
+                i += 1
+
+            elif tok in ')]}':
+                # Close group: pop, apply multiplier if present, and append
+                group = stack.pop()
+                i += 1
+                mult = 1.0
+                if i < len(tokens) and is_number(tokens[i]):
+                    mult = float(tokens[i])
+                    i += 1
+
+                if mult.is_integer():
+                    expanded = group * int(mult)
+                else:
+                    # Non-integer multipliers are unusual; keep symbolic
+                    expanded = f"({group}){mult}"
+
+                stack[-1] += expanded
+
+            else:
+                # Element symbols and plain numbers just append
+                stack[-1] += tok
+                i += 1
+
+        return stack[0]
+
+    def _analyze_ions(self, formula: str) -> Dict[str, float]:
+        """Count occurrences of known common ions based on COMMON_IONS.
+
+        - Uses _expand_for_ions to handle nested parentheses/brackets.
+        - Treats polyatomic ions (NO3, SO4, PO4, etc.) as NOT followed by a digit.
+        - Allows monatomic ions (Na, K, Ca, Mg, Cl) to have numeric multipliers (Na2, Ca3, Cl2).
+        """
+        ion_counts = defaultdict(float)
+        if not COMMON_IONS:
+            return {}
+
+        expanded = self._expand_for_ions(formula)
+
+        # Split ions into monatomic vs polyatomic based on their element map
+        mono_keys = []
+        poly_keys = []
+        for ion, info in COMMON_IONS.items():
+            elems = info.get("elements", {})
+            if len(elems) == 1 and next(iter(elems.values())) == 1:
+                # Single element, count 1 → monatomic ion (Na+, K+, Ca2+, Cl-, etc.)
+                mono_keys.append(ion)
+            else:
+                # Anything else → polyatomic (NO3-, SO4 2-, HCO3-, CH3COO-, PO4 3-, etc.)
+                poly_keys.append(ion)
+
+        # Sort longest-first to reduce ambiguous overlaps
+        mono_keys = sorted(mono_keys, key=len, reverse=True)
+        poly_keys = sorted(poly_keys, key=len, reverse=True)
+
+        # 1) Polyatomic ions: match only when NOT followed by a digit
+        if poly_keys:
+            pattern_poly = r'(' + '|'.join(re.escape(ion) for ion in poly_keys) + r')(?!\d)'
+            for ion in re.findall(pattern_poly, expanded):
+                ion_counts[ion] += 1.0
+
+        # 2) Monatomic ions: allow numeric multipliers (Na2, Ca3, Cl2, etc.)
+        if mono_keys:
+            pattern_mono = r'(' + '|'.join(re.escape(ion) for ion in mono_keys) + r')(\d*\.?\d*)'
+            for ion, count_str in re.findall(pattern_mono, expanded):
+                mult = float(count_str) if count_str else 1.0
+                ion_counts[ion] += mult
+
+        return dict(ion_counts)
+
+    # ---------- Chemical interpretation of formula after parsing/tokenization ----------
+
+    def analyze_formula(self) -> FormulaAnalysis:
+        """
+        Rich analysis of the formula:
+          - elemental composition (including hydration)
+          - fragments for parenthetical groups
+          - common ion counts
+          - hydration waters
+          - inferred net charge from ions (if any)
+        """
+        # Split on hydration dot
         formula_parts = self.formula.split('·')
-        main_formula = formula_parts[0]
-        
+        main_formula = formula_parts[0].strip()
+
         elements = defaultdict(float)
-        
-        # Parse main formula
-        pattern = r'([A-Z][a-z]?)(\d*\.?\d*)'
-        matches = re.findall(pattern, main_formula)
-        
-        for element, count in matches:
-            count = float(count) if count else 1.0
-            elements[element] += count
-        
-        # Add water if hydrated
-        if len(formula_parts) > 1 and 'H2O' in formula_parts[1]:
-            water_match = re.match(r'(\d*\.?\d*)H2O', formula_parts[1])
+
+        # 1) Core elemental composition from non-hydrate part
+        core_elements = self._parse_core_formula(main_formula)
+        for elem, count in core_elements.items():
+            elements[elem] += count
+
+        # 2) Hydration: handle single "nH2O" on first dot-part for now
+        hydrate_nH2O = 0.0
+        if len(formula_parts) > 1:
+            hydrate_part = formula_parts[1].strip()
+            # e.g. "7H2O" or "H2O"
+            water_match = re.fullmatch(r'(\d*\.?\d*)H2O', hydrate_part)
             if water_match:
                 n_water = float(water_match.group(1)) if water_match.group(1) else 1.0
-                elements['H'] += 2 * n_water
-                elements['O'] += n_water
-        
-        return dict(elements)
-    
+                elements["H"] += 2 * n_water
+                elements["O"] += n_water
+                hydrate_nH2O = n_water
+                self.hydration = int(n_water)
+
+        # 3) Parenthetical fragments
+        fragments = self._extract_parenthetical_fragments(main_formula)
+
+        # 4) Ion counts and net charge
+        ions = self._analyze_ions(main_formula)
+        net_charge = None
+        if ions:
+            charge_sum = 0.0
+            for ion, count in ions.items():
+                info = COMMON_IONS.get(ion)
+                if info and "charge" in info:
+                    charge_sum += info["charge"] * count
+            net_charge = charge_sum
+
+        return FormulaAnalysis(
+            elements=dict(elements),
+            fragments=fragments,
+            ions=ions,
+            hydrate_nH2O=hydrate_nH2O,
+            net_charge=net_charge
+        )
+
+    # ---------- Simple “element-only” view ----------
+
+    def parse_formula(self) -> Dict[str, float]:
+        """
+        Elemental composition only.
+        Forward-looking stuff is available via analyze_formula().
+        """
+        return self.analyze_formula().elements
+
     def calculate_mw(self) -> float:
-        """Calculate molecular weight from formula"""
-        elements = self.parse_formula()
-        return sum(ATOMIC_WEIGHTS.get(elem, 0) * count 
-                  for elem, count in elements.items())
-    
+        """Calculate molecular weight from formula (using elemental composition)."""
+        analysis = self.analyze_formula()
+        return sum(ATOMIC_WEIGHTS.get(elem, 0) * count
+                   for elem, count in analysis.elements.items())
+
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization"""
         return {
@@ -70,12 +315,21 @@ class Component:
             'hydration': self.hydration,
             'metadata': self.metadata
         }
-    
+        
+    def debug_print_analysis(self):
+        """Quick helper for development / REPL use."""
+        a = self.analyze_formula()
+        print(f"Component: {self.name}  ({self.formula})")
+        print("  Elements:", a.elements)
+        print("  Fragments:", a.fragments)
+        print("  Ions:", a.ions)
+        print("  Hydrate waters:", a.hydrate_nH2O)
+        print("  Net charge:", a.net_charge)
+
     @classmethod
     def from_dict(cls, data: dict):
         """Create from dictionary"""
         return cls(**data)
-
 
 @dataclass
 class ComplexComponent(Component):
