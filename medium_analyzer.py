@@ -20,6 +20,7 @@ ATOMIC_WEIGHTS = {
 COMMON_IONS = {
     "NH4": {"charge": +1, "elements": {"N": 1, "H": 4}},
     "SO4": {"charge": -2, "elements": {"S": 1, "O": 4}},
+    "PO4": {"charge": -3, "elements": {"P": 1, "O": 4}},
     "NO3": {"charge": -1, "elements": {"N": 1, "O": 3}},
     "NO2": {"charge": -2, "elements": {"N": 1, "O": 2}},
     "CO3": {"charge": -2, "elements": {"C": 1, "O": 3}},
@@ -72,7 +73,7 @@ class Component:
         Returns elemental composition.
         """
         # Tokens: element, number, '(', ')'
-        token_pattern = r'([A-Z][a-z]?|\d*\.?\d+|\(|\))'
+        token_pattern = r'([A-Z][a-z]?|\d*\.?\d+|[()\[\]\{\}])'
         tokens = [t for t in re.findall(token_pattern, formula) if t]
 
         elements_stack = [defaultdict(float)]
@@ -139,21 +140,77 @@ class Component:
                 fragments[group_formula_stripped] = self._parse_core_formula(group_formula_stripped)
         return fragments
 
-    def _analyze_ions(self, formula: str) -> Dict[str, float]:
-        """
-        Count occurrences of known common ions based on COMMON_IONS keys.
+    def _expand_for_ions(self, formula: str) -> str:
+        """Expand grouped parts of a formula ((), [], {}) with integer
+        multipliers into a flat string for ion pattern matching.
 
-        This is purely pattern-based and does not try to be fully general.
+        Hydrate dots/interpuncts (·) are stripped since hydrates are handled separately.
+        """
+        # Work only on the main (non-hydrate) part of the formula
+        main = formula.split('·')[0]
+
+        token_pattern = r'([A-Z][a-z]?|\d*\.?\d+|[()\[\]\{\}])'
+        tokens = [t for t in re.findall(token_pattern, main) if t]
+
+        def is_number(tok: str) -> bool:
+            return bool(re.fullmatch(r'\d*\.?\d+', tok))
+
+        stack = [""]
+        i = 0
+
+        while i < len(tokens):
+            tok = tokens[i]
+
+            if tok in '([{':
+                # Start a new grouped substring
+                stack.append("")
+                i += 1
+
+            elif tok in ')]}':
+                # Close group: pop, apply multiplier if present, and append
+                group = stack.pop()
+                i += 1
+                mult = 1.0
+                if i < len(tokens) and is_number(tokens[i]):
+                    mult = float(tokens[i])
+                    i += 1
+
+                if mult.is_integer():
+                    expanded = group * int(mult)
+                else:
+                    # Non-integer multipliers are unusual; keep symbolic
+                    expanded = f"({group}){mult}"
+
+                stack[-1] += expanded
+
+            else:
+                # Element symbols and plain numbers just append
+                stack[-1] += tok
+                i += 1
+
+        return stack[0]
+
+    def _analyze_ions(self, formula: str) -> Dict[str, float]:
+        """Count occurrences of known common ions based on COMMON_IONS.
+
+        Uses a group-expansion step so nested parentheses/brackets and
+        multipliers are handled correctly, and avoids treating trailing
+        digits as ion multipliers (e.g. NO20 is not nitrite with x0).
         """
         ion_counts = defaultdict(float)
         if not COMMON_IONS:
             return {}
 
-        # Look for e.g. NH4, NH42, SO4, SO42, etc.
-        ion_pattern = r'(' + '|'.join(map(re.escape, COMMON_IONS.keys())) + r')(\d*\.?\d*)'
-        for ion, count_str in re.findall(ion_pattern, formula):
-            mult = float(count_str) if count_str else 1.0
-            ion_counts[ion] += mult
+        expanded = self._expand_for_ions(formula)
+
+        # Longest-first to reduce overlap; only match ions not followed by a digit
+        ion_keys = sorted(COMMON_IONS.keys(), key=len, reverse=True)
+        pattern_parts = [re.escape(ion) + r'(?!\d)' for ion in ion_keys]
+        ion_pattern = r'(' + '|'.join(pattern_parts) + r')'
+
+        for ion in re.findall(ion_pattern, expanded):
+            ion_counts[ion] += 1.0
+
         return dict(ion_counts)
 
     # ---------- Chemical interpretation of formula after parsing/tokenization ----------
