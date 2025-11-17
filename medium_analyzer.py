@@ -6,6 +6,9 @@ from typing import Dict, List, Optional, Union
 from collections import defaultdict
 import numpy as np
 from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Molecular weights of elements (g/mol)
 ATOMIC_WEIGHTS = {
