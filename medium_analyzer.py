@@ -496,6 +496,21 @@ class ComponentLibrary:
             # Fallback: check metadata
             return [comp for comp in self.components.values()
                    if tag in comp.metadata.get('tags', [])]
+            
+    def add_component(self, component: Union['Component', 'ComplexComponent']):
+        """
+        Add or update a single component in the library. 
+        This is typically used for user-defined components.
+        """
+        if not component.name:
+            logger.error("Attempted to add component without a name.")
+            return
+
+        # Components are stored in the self.components dictionary, 
+        # using the name as the key. This will overwrite any existing component
+        # with the same name, which is desired for user customization.
+        self.components[component.name] = component
+        logger.info(f"Component '{component.name}' added/updated in library.")
 
 class Recipe:
     """Represents a medium recipe"""
