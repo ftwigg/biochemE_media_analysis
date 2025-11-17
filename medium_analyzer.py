@@ -193,9 +193,9 @@ class Component:
     def _analyze_ions(self, formula: str) -> Dict[str, float]:
         """Count occurrences of known common ions based on COMMON_IONS.
 
-        Uses a group-expansion step so nested parentheses/brackets and
-        multipliers are handled correctly, and avoids treating trailing
-        digits as ion multipliers (e.g. NO20 is not nitrite with x0).
+        - Uses _expand_for_ions to handle nested parentheses/brackets.
+        - Treats polyatomic ions (NO3, SO4, PO4, etc.) as NOT followed by a digit.
+        - Allows monatomic ions (Na, K, Ca, Mg, Cl) to have numeric multipliers (Na2, Ca3, Cl2).
         """
         ion_counts = defaultdict(float)
         if not COMMON_IONS:
@@ -203,13 +203,34 @@ class Component:
 
         expanded = self._expand_for_ions(formula)
 
-        # Longest-first to reduce overlap; only match ions not followed by a digit
-        ion_keys = sorted(COMMON_IONS.keys(), key=len, reverse=True)
-        pattern_parts = [re.escape(ion) + r'(?!\d)' for ion in ion_keys]
-        ion_pattern = r'(' + '|'.join(pattern_parts) + r')'
+        # Split ions into monatomic vs polyatomic based on their element map
+        mono_keys = []
+        poly_keys = []
+        for ion, info in COMMON_IONS.items():
+            elems = info.get("elements", {})
+            if len(elems) == 1 and next(iter(elems.values())) == 1:
+                # Single element, count 1 → monatomic ion (Na+, K+, Ca2+, Cl-, etc.)
+                mono_keys.append(ion)
+            else:
+                # Anything else → polyatomic (NO3-, SO4 2-, HCO3-, CH3COO-, PO4 3-, etc.)
+                poly_keys.append(ion)
 
-        for ion in re.findall(ion_pattern, expanded):
-            ion_counts[ion] += 1.0
+        # Sort longest-first to reduce ambiguous overlaps
+        mono_keys = sorted(mono_keys, key=len, reverse=True)
+        poly_keys = sorted(poly_keys, key=len, reverse=True)
+
+        # 1) Polyatomic ions: match only when NOT followed by a digit
+        if poly_keys:
+            pattern_poly = r'(' + '|'.join(re.escape(ion) for ion in poly_keys) + r')(?!\d)'
+            for ion in re.findall(pattern_poly, expanded):
+                ion_counts[ion] += 1.0
+
+        # 2) Monatomic ions: allow numeric multipliers (Na2, Ca3, Cl2, etc.)
+        if mono_keys:
+            pattern_mono = r'(' + '|'.join(re.escape(ion) for ion in mono_keys) + r')(\d*\.?\d*)'
+            for ion, count_str in re.findall(pattern_mono, expanded):
+                mult = float(count_str) if count_str else 1.0
+                ion_counts[ion] += mult
 
         return dict(ion_counts)
 
