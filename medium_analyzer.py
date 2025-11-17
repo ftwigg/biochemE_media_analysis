@@ -179,7 +179,7 @@ class Component:
             elements[elem] += count
 
         # 2) Hydration: handle single "nH2O" on first dot-part for now
-        hydrate_waters = 0.0
+        hydrate_nH2O = 0.0
         if len(formula_parts) > 1:
             hydrate_part = formula_parts[1].strip()
             # e.g. "7H2O" or "H2O"
@@ -188,7 +188,7 @@ class Component:
                 n_water = float(water_match.group(1)) if water_match.group(1) else 1.0
                 elements["H"] += 2 * n_water
                 elements["O"] += n_water
-                hydrate_waters = n_water
+                hydrate_nH2O = n_water
                 self.hydration = int(n_water)
 
         # 3) Parenthetical fragments
@@ -209,7 +209,7 @@ class Component:
             elements=dict(elements),
             fragments=fragments,
             ions=ions,
-            hydrate_waters=hydrate_waters,
+            hydrate_nH2O=hydrate_nH2O,
             net_charge=net_charge
         )
 
@@ -245,7 +245,7 @@ class Component:
         print("  Elements:", a.elements)
         print("  Fragments:", a.fragments)
         print("  Ions:", a.ions)
-        print("  Hydrate waters:", a.hydrate_waters)
+        print("  Hydrate waters:", a.hydrate_nH2O)
         print("  Net charge:", a.net_charge)
 
     @classmethod
